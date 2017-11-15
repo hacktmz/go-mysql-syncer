@@ -1,0 +1,3 @@
+addr = "10.10.106.68:3307"
+bin_name = "mysql-bin.000012"
+bin_pos = 1071415
