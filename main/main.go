@@ -8,7 +8,8 @@ import (
 	"runtime"
 	"syscall"
 	//_ "github.com/go-sql-driver/mysql"
-  "goproducer/producer"
+	"goproducer/producer"
+
 	"github.com/juju/errors"
 	"github.com/ngaut/log"
 )
@@ -38,38 +39,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("config load failed.detail=%s", errors.ErrorStack(err))
 	}
+		r, err := producer.NewRail(config, v)
+		defer r.Close()
 
-	r, err := producer.NewRail(config)
-	defer r.Close()
-
-	if err != nil {
-		fmt.Println("new Rail error.", err)
-		log.Fatalf("new Rail error. detail:%v", err)
-	}
-
-	fmt.Println("rail start succ.")
-	/*
-		timer := time.NewTicker(1 * time.Microsecond)
-		for {
-			select {
-			case <-timer.C:
-				if r.IsRestart == true {
-					r.Close()
-					time.Sleep(2 * time.Second)
-					r, err = rail.NewRail(config)
-				}
-			}
+		if err != nil {
+			fmt.Println("new Rail error.", err)
+			log.Fatalf("new Rail error. detail:%v", err)
 		}
 
-		/*
-			for {
-				if r.IsRestart == true {
-					r.Close()
-					time.Sleep(10 * time.Second)
-					r, err = rail.NewRail(config)
-				}
-			}
-	*/
+		fmt.Println("rail start succ. %d", i)
+	}
+
 	signal := <-sc
 
 	log.Errorf("program terminated! signal:%v", signal)

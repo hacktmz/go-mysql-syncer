@@ -10,10 +10,8 @@ import (
 
 type Config struct {
 	BinlogFlushMs time.Duration  `toml:"binlog_flush_ms"`
-	DataPath      string         `toml:"data_path"`
-	QueueKey      string         `toml:"queue"`
 	LogConfig     *LogConfig     `toml:"log"`
-	MysqlConfig   *MysqlConfig   `toml:"mysql"`
+	MysqlConfig   *[]MysqlConfig `toml:"mysql"`
 	ClusterConfig *ClusterConfig `toml:"clusters"`
 }
 type ClusterConfig struct {
@@ -22,7 +20,7 @@ type ClusterConfig struct {
 	TableName string   `toml:"tablename"`
 }
 type LogConfig struct {
-	Path         string `toml:"path"`
+	Path         string `toml:"log_path"`
 	Type         int    `toml:"type"`
 	Highlighting bool   `toml:"highlighting"`
 	Level        string `toml:"level"`
@@ -33,6 +31,8 @@ type MysqlConfig struct {
 	User     string `toml:"user"`
 	Password string `toml:"password"`
 	Flavor   string `toml:"flavor"`
+	DataPath string `toml:"data_path"`
+	QueueKey string `toml:"queue"`
 }
 
 //NewConfigWithFile 读取配置文件

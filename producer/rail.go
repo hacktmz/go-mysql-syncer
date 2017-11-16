@@ -54,10 +54,11 @@ type Rail struct {
 	IsRestart  bool
 	ColumnsMap map[string][]string
 	cluster    *banyan_api.ClusterClient
+	sqlcfg     MysqlConfig
 }
 
 //NewRail 初始化
-func NewRail(c *Config) (*Rail, error) {
+func NewRail(c *Config, mysqlcfg MysqlConfig) (*Rail, error) {
 	//日志目录确保存在
 	dir := filepath.Dir(c.LogConfig.Path)
 	exist, _ := PathExists(dir)
@@ -84,11 +85,11 @@ func NewRail(c *Config) (*Rail, error) {
 
 	cfg := canal.NewDefaultConfig()
 
-	cfg.Addr = c.MysqlConfig.Addr
-	cfg.User = c.MysqlConfig.User
-	cfg.Password = c.MysqlConfig.Password
+	cfg.Addr = mysqlcfg.Addr
+	cfg.User = mysqlcfg.User
+	cfg.Password = mysqlcfg.Password
 	cfg.Dump.ExecutionPath = "" //不支持mysqldump
-	cfg.Flavor = c.MysqlConfig.Flavor
+	cfg.Flavor = mysqlcfg.Flavor
 	cfg.LogLevel = c.LogConfig.Level
 
 	if canalIns, err := canal.NewCanal(cfg); err != nil {
@@ -111,7 +112,7 @@ func NewRail(c *Config) (*Rail, error) {
 			clusters = append(clusters, v)
 		}
 		r.cluster = banyan_api.NewClusterClient(clusters)
-
+		r.sqlcfg = mysqlcfg
 		//注册RowsEventHandler
 		r.canal.SetEventHandler(r)
 
@@ -614,7 +615,7 @@ func (r *Rail) String() string {
 }
 
 func (r *Rail) getMasterInfoPath() string {
-	return r.c.DataPath + "/" + "master.info"
+	return r.sqlcfg.DataPath //+ "/" + "master.info"
 }
 
 func (r *Rail) loadMasterInfo() (*mysql.Position, error) {
@@ -630,7 +631,7 @@ func (r *Rail) loadMasterInfo() (*mysql.Position, error) {
 
 	var mysqlPos MysqlPos
 	_, err = toml.DecodeReader(f, &mysqlPos)
-	if err != nil || mysqlPos.Addr != r.c.MysqlConfig.Addr || mysqlPos.Name == "" {
+	if err != nil || mysqlPos.Addr != r.sqlcfg.Addr || mysqlPos.Name == "" {
 		return r.getNewestPos()
 	}
 
@@ -651,7 +652,7 @@ func (r *Rail) getNewestPos() (*mysql.Position, error) {
 	binlogName, _ := result.GetStringByName(0, "File")
 	binlogPos, _ := result.GetIntByName(0, "Position")
 
-	log.Infof("fetch mysql(%s)'s the newest pos:(%s, %d)", r.c.MysqlConfig.Addr, binlogName, binlogPos)
+	log.Infof("fetch mysql(%s)'s the newest pos:(%s, %d)", r.sqlcfg.Addr, binlogName, binlogPos)
 
 	return &mysql.Position{binlogName, uint32(binlogPos)}, nil
 }
@@ -666,7 +667,7 @@ func (r *Rail) saveMasterInfo(posName string, pos uint32) error {
 	mysqlPos, err := r.loadMasterInfo()
 	if err == nil && r.pos == nil {
 		r.pos = &MysqlPos{
-			Addr: r.c.MysqlConfig.Addr,
+			Addr: r.sqlcfg.Addr,
 			Name: mysqlPos.Name,
 			Pos:  mysqlPos.Pos,
 		}
@@ -674,7 +675,7 @@ func (r *Rail) saveMasterInfo(posName string, pos uint32) error {
 
 	if err != nil && r.pos == nil {
 		r.pos = &MysqlPos{
-			Addr: r.c.MysqlConfig.Addr,
+			Addr: r.sqlcfg.Addr,
 			Name: posName,
 			Pos:  pos,
 		}
@@ -691,7 +692,7 @@ func (r *Rail) saveMasterInfo(posName string, pos uint32) error {
 		if r.pos == nil {
 
 			r.pos = &MysqlPos{
-				Addr: r.c.MysqlConfig.Addr,
+				Addr: r.sqlcfg.Addr,
 				Name: posName,
 				Pos:  pos,
 			}
@@ -771,7 +772,7 @@ exit:
 
 func (r *Rail) sqlProcessing() {
 	cli, err := r.cluster.GetBanyanClient(r.c.ClusterConfig.NsName, r.c.ClusterConfig.TableName, 3000, 3)
-	key := r.c.QueueKey
+	key := r.sqlcfg.QueueKey
 	if err != nil {
 		log.Errorf("GetBanyanClient failed: %v", err)
 		goto exit
