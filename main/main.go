@@ -39,6 +39,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("config load failed.detail=%s", errors.ErrorStack(err))
 	}
+	for i, v := range *config.MysqlConfig {
 		r, err := producer.NewRail(config, v)
 		defer r.Close()
 
