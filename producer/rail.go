@@ -234,14 +234,14 @@ func (r *Rail) ProcessAlter(queryEvent *replication.QueryEvent) error {
 		}
 	}
 	strQuery := string(newquery)
-	log.Debugf("@@@@alter@@@@ = %s ", string(strQuery))
+	log.Debugf("alter = %s ", string(strQuery))
 	pos := -1
 	pos = strings.Index(strQuery, "alter table ")
 	strQuery = strQuery[pos+len("alter table ") : len(strQuery)]
-	log.Debugf("@@@@1212@@@@ = %s ", strQuery)
+	log.Debugf("1212 = %s ", strQuery)
 	pos = strings.Index(strQuery, " ")
 	schemaTable = strQuery[0:pos]
-	log.Debugf("@@@@33@@@@ = %s ", schemaTable)
+	log.Debugf("33 = %s ", schemaTable)
 	columns, ok := r.ColumnsMap[schemaTable]
 	//如果 ok 是 true, 则存在，否则不存在 /
 
@@ -266,17 +266,17 @@ func (r *Rail) ProcessAlter(queryEvent *replication.QueryEvent) error {
 			strQuery = strQuery[pos+len("add ") : len(strQuery)]
 			pos = strings.Index(strQuery, " ")
 			columnName := strQuery[0:pos]
-			log.Debugf("@@@@columnName@@@@ = %s ", columnName)
+			log.Debugf("columnName = %s ", columnName)
 			fields = append(fields, strQuery[0:pos])
 			strQuery = strQuery[pos+len(columnName)+1 : len(strQuery)]
-			log.Debugf("@@@@strQuery@@@@ = %s ", strQuery)
+			log.Debugf("strQuery = %s ", strQuery)
 			ischanged = true
 		} else if strings.Contains(strQuery, "drop ") {
 			pos = strings.Index(strQuery, "drop ")
 			strQuery = strQuery[pos+len("drop ") : len(strQuery)]
 			pos = strings.Index(strQuery, ",")
 			columnName := strQuery[0:pos]
-			log.Debugf("@@@@columnName@@@@ = %s ", columnName)
+			log.Debugf("columnName = %s ", columnName)
 			fieldsTmp := make([]string, 0)
 			for _, v := range fields {
 				if v == columnName {
@@ -286,7 +286,7 @@ func (r *Rail) ProcessAlter(queryEvent *replication.QueryEvent) error {
 			}
 			fields = fieldsTmp
 			strQuery = strQuery[pos+1 : len(strQuery)]
-			log.Debugf("@@123= %s ", strQuery)
+			log.Debugf("123= %s ", strQuery)
 			ischanged = true
 		}
 		if ischanged == false {
@@ -295,9 +295,9 @@ func (r *Rail) ProcessAlter(queryEvent *replication.QueryEvent) error {
 	}
 
 	strQuery = strings.TrimSpace(strQuery)
-	log.Debugf("@@@@@@@@ = %s  pos =%d   fields =%s", strQuery, pos, fields)
+	log.Debugf(" = %s  pos =%d   fields =%s", strQuery, pos, fields)
 	r.ColumnsMap[schemaTable] = fields
-	log.Debugf("@@@###= %s", r.ColumnsMap)
+	log.Debugf("###= %s", r.ColumnsMap)
 	return nil
 }
 

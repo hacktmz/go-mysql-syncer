@@ -44,7 +44,7 @@ type Message struct {
 func NewMessage(id string, re *canal.RowsEvent, columns_map *map[string][]string) *Message {
 	//自己处理库表名
 	schema_table := fmt.Sprintf("%s.%s", re.Table.Schema, re.Table.Name)
-	log.Infof("======= map====:%s", *columns_map)
+	log.Infof(" map:%s", *columns_map)
 	columns, ok := (*columns_map)[schema_table]
 	/* 如果 ok 是 true, 则存在，否则不存在 */
 	columnsExist := false
@@ -77,7 +77,7 @@ func NewMessage(id string, re *canal.RowsEvent, columns_map *map[string][]string
 	} else {
 		for _, column := range re.Table.Columns {
 			fields = append(fields, column.Name)
-			log.Debugf("======= column:%s", column.Name)
+			log.Debugf(" column:%s", column.Name)
 		}
 		(*columns_map)[schema_table] = fields
 	}
@@ -89,13 +89,13 @@ func NewMessage(id string, re *canal.RowsEvent, columns_map *map[string][]string
 				m.RawRows = append(m.RawRows, parseRow(row, fields))
 			} else {
 				m.Rows = append(m.Rows, parseRow(row, fields))
-				log.Debugf("$$$$	m.Action: %s  111 row:%s", m.Action, row)
+				log.Debugf("	m.Action: %s  111 row:%s", m.Action, row)
 			}
 		}
 	} else {
 		for _, row := range re.Rows {
 			m.Rows = append(m.Rows, parseRow(row, fields))
-			log.Debugf("$$$$	m.Action: %s  111 row:%s", m.Action, row)
+			log.Debugf("	m.Action: %s  111 row:%s", m.Action, row)
 			//log.Infof("	m.Action: %s  222 row:%s", m.Action, parseRow(row, fields))
 		}
 	}
@@ -107,7 +107,7 @@ func parseRow(values []interface{}, fields []string) map[string]interface{} {
 	rowMap := make(map[string]interface{}, len(values))
 	for i, value := range values {
 		rowMap[fields[i]] = value
-		log.Debugf("	==== fields[%d]: %s  value:%s", i, fields[i], value)
+		log.Debugf("	 fields[%d]: %s  value:%s", i, fields[i], value)
 	}
 	return rowMap
 }
@@ -128,16 +128,6 @@ func (m *Message) Encode2IOReader() (io.Reader, error) {
 	return bytes.NewReader(b), nil
 }
 
-/*
-func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq BackendQueue) error {
-	buf.Reset()
-	_, err := msg.WriteTo(buf)
-	if err != nil {
-		return err
-	}
-	return bq.Put(buf.Bytes())
-}
-*/
 func (m *Message) WriteTo(w io.Writer) (int, error) {
 	jsonBytes, _ := m.Encode2Json()
 	return w.Write(jsonBytes)
