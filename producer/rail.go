@@ -167,20 +167,24 @@ func (r *Rail) OnDDL(nextPos mysql.Position, queryEvent *replication.QueryEvent)
 		query = strings.ToLower(query)
 		var strid string
 		if string(queryEvent.Schema) != "" {
-			if !strings.HasPrefix(query, "create database") {
-				log.Infof("pos:%d schema:%s statement: %s ", nextPos.Pos, queryEvent.Schema, query)
-				if strings.Contains(query, "drop") {
+			log.Infof("pos:%d schema:%s statement: %s ", nextPos.Pos, queryEvent.Schema, query)
+			/*
+				if strings.Contains(query, "create database") {
 					err := r.saveMasterInfo(nextPos.Name, nextPos.Pos)
 					if err != nil {
 						log.Warnf("save binlog position error  - %s", err)
 					}
 				}
-			} else {
-				log.Infof("create database statement: %s", query)
+			*/
+			if strings.Contains(query, "drop") {
+				err := r.saveMasterInfo(nextPos.Name, nextPos.Pos)
+				if err != nil {
+					log.Warnf("save binlog position error  - %s", err)
+				}
+				defer r.Close()
+				return errors.New("create database need to sync binlog pos")
 			}
 
-			defer r.Close()
-			return errors.New("create database need to sync binlog pos")
 		} else {
 			log.Infof("pos:%d schema is null, statement: %s", nextPos.Pos, query)
 			//alter table

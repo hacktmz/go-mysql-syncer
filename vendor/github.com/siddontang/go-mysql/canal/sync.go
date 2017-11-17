@@ -69,7 +69,7 @@ func (c *Canal) startSyncBinlog() error {
 			}
 		case *replication.QueryEvent:
 			query := strings.ToLower(string(e.Query))
-			if strings.Contains(query, "create table") {
+			if strings.Contains(query, "create table") || strings.Contains(query, "create database") {
 				s.SetEvent()
 			}
 			// handle alert table query
