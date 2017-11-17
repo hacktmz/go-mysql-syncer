@@ -2,6 +2,7 @@ package canal
 
 import (
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/juju/errors"
@@ -67,6 +68,10 @@ func (c *Canal) startSyncBinlog() error {
 				return errors.Trace(err)
 			}
 		case *replication.QueryEvent:
+			query := strings.ToLower(string(e.Query))
+			if strings.Contains(query, "create table") {
+				s.SetEvent()
+			}
 			// handle alert table query
 			if mb := expAlterTable.FindSubmatch(e.Query); mb != nil {
 				if len(mb[1]) == 0 {

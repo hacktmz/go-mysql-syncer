@@ -185,12 +185,15 @@ func (r *Rail) OnDDL(nextPos mysql.Position, queryEvent *replication.QueryEvent)
 			log.Infof("pos:%d schema is null, statement: %s", nextPos.Pos, query)
 			//alter table
 			if strings.Contains(query, "create table") {
+				select {
+				case id := <-r.idChan:
+					strid = string(id[:])
+				}
 				err := r.saveMasterInfo(nextPos.Name, nextPos.Pos)
 				if err != nil {
 					log.Warnf("save binlog position error - %s", err)
 				}
-				defer r.Close()
-				return errors.New("create table need to sync binlog pos")
+				r.sqlChan <- strid + "|" + query
 			}
 			if strings.Contains(query, "alter table") {
 				select {
