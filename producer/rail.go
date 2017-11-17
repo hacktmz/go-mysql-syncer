@@ -133,7 +133,7 @@ func NewRail(c *Config, mysqlcfg MysqlConfig) (*Rail, error) {
 		//启动msg id分配器
 		r.waitGroup.Wrap(func() { r.sqlProcessing() })
 
-		log.Info("rail start ok.")
+		log.Info("rail start ok. id = %s", r.sqlcfg.Id)
 		return r, nil
 	}
 }
@@ -158,7 +158,7 @@ func (r *Rail) Close() {
 
 	r.waitGroup.Wait()
 
-	log.Info("rail safe close.")
+	log.Info("rail safe close. id = %s", r.sqlcfg.Id)
 }
 
 func (r *Rail) OnDDL(nextPos mysql.Position, queryEvent *replication.QueryEvent) error {
@@ -216,15 +216,6 @@ func (r *Rail) OnDDL(nextPos mysql.Position, queryEvent *replication.QueryEvent)
 
 func (r *Rail) ProcessAlter(queryEvent *replication.QueryEvent) error {
 	schemaTable := "" //fmt.Sprintf("%s.%s", queryEvent.Schema, queryEvent.Table.Name)
-	/*
-		columns, ok := r.ColumnsMap[schemaTable]
-		//如果 ok 是 true, 则存在，否则不存在 /
-
-		columns_exist := false
-		if !ok {
-			columns_exist =
-		}
-	*/
 	fields := make([]string, 0)
 	query := strings.ToLower(string(queryEvent.Query))
 	newquery := make([]byte, 0)

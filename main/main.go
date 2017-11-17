@@ -39,16 +39,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("config load failed.detail=%s", errors.ErrorStack(err))
 	}
-	for i, v := range *config.MysqlConfig {
+	for _, v := range *config.MysqlConfig {
 		r, err := producer.NewRail(config, v)
 		defer r.Close()
 
 		if err != nil {
 			fmt.Println("new Rail error.", err)
-			log.Fatalf("new Rail error. detail:%v", err)
+			log.Fatalf("new Rail error. detail:%v ,%s", err, v.Id)
 		}
 
-		fmt.Println("rail start succ. %d", i)
+		fmt.Println("rail start succ. %s", v.Id)
 	}
 
 	signal := <-sc

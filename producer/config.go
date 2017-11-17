@@ -27,6 +27,7 @@ type LogConfig struct {
 }
 
 type MysqlConfig struct {
+	Id       string `toml:"id"`
 	Addr     string `toml:"addr"`
 	User     string `toml:"user"`
 	Password string `toml:"password"`

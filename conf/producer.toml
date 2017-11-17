@@ -17,6 +17,7 @@ level = "debug"
 
 #定义订阅的mysql主库的连接信息
 [[mysql]]
+id = "1"
 addr = "10.10.106.68:3307"
 user = "backup"
 password = "backup"
@@ -27,6 +28,7 @@ queue = "sql"
 
 
 [[mysql]]
+id = "2"
 addr = "10.10.106.71:3306"
 user = "backup"
 password = "backup"
