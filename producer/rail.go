@@ -111,7 +111,7 @@ func NewRail(c *Config, mysqlcfg MysqlConfig) (*Rail, error) {
 		for _, v := range c.ClusterConfig.Agents {
 			clusters = append(clusters, v)
 		}
-		r.cluster = banyan_api.NewClusterClient(clusters)
+		//r.cluster = banyan_api.NewClusterClient(clusters)
 		r.sqlcfg = mysqlcfg
 		//注册RowsEventHandler
 		r.canal.SetEventHandler(r)
@@ -383,6 +383,8 @@ func typeof(v interface{}) string {
 		return "num"
 	case bool:
 		return "num"
+	case nil:
+		return "null"
 
 	case string:
 		return "string"
@@ -414,8 +416,9 @@ func (r *Rail) updateSql(msg Message) int {
 			// sort 'string' key in increasing order
 			sort.Strings(sorted_keys)
 			for _, k := range sorted_keys {
-				if v[k] == primary_keys && typeof(v[k]) == pk_type {
+				if msg.RawRows[i][k] == primary_keys && typeof(msg.RawRows[i][k]) == pk_type {
 					primary_keys = k
+					continue //主键修不修改全部忽略
 				}
 				if msg.RawRows[i][k] == v[k] && typeof(v[k]) == typeof(msg.RawRows[i][k]) {
 					continue
@@ -437,6 +440,15 @@ func (r *Rail) updateSql(msg Message) int {
 							sqlStart = sqlStart + fmt.Sprintf("%s = %d", k, v[k])
 						} else {
 							sqlStart = sqlStart + fmt.Sprintf(",%s = %d", k, v[k])
+						}
+						count++
+						processedString[k] = 1
+					} else if typeof(v[k]) == "null" {
+						log.Debugf("k1 = %s  v1 = '%s' type= %s", k, v[k], typeof(v[k]))
+						if count == 0 {
+							sqlStart = sqlStart + fmt.Sprintf("%s = null", k)
+						} else {
+							sqlStart = sqlStart + fmt.Sprintf(",%s = null", k)
 						}
 						count++
 						processedString[k] = 1
@@ -528,6 +540,12 @@ func (r *Rail) deleteSql(msg Message) int {
 					} else {
 						sqlMid = sqlMid + fmt.Sprintf(",%d", v2)
 					}
+				} else if typeof(v2) == "null" {
+					if i == 0 {
+						sqlMid = sqlMid + fmt.Sprintf("(null")
+					} else {
+						sqlMid = sqlMid + fmt.Sprintf(",null")
+					}
 				}
 			}
 		}
@@ -574,6 +592,13 @@ func (r *Rail) insertSql(msg Message) int {
 						sqlMid = sqlMid + fmt.Sprintf("(%d", v[k])
 					} else {
 						sqlMid = sqlMid + fmt.Sprintf(",%d", v[k])
+					}
+				} else if typeof(v[k]) == "null" {
+					log.Debugf("k1 = %s  v1 = '%s' type= %s", k, v[k], typeof(v[k]))
+					if i == 0 {
+						sqlMid = sqlMid + fmt.Sprintf("(null")
+					} else {
+						sqlMid = sqlMid + fmt.Sprintf(",null")
 					}
 				}
 			}
@@ -769,20 +794,24 @@ exit:
 }
 
 func (r *Rail) sqlProcessing() {
-	cli, err := r.cluster.GetBanyanClient(r.c.ClusterConfig.NsName, r.c.ClusterConfig.TableName, 3000, 3)
-	key := r.sqlcfg.QueueKey
-	if err != nil {
-		log.Errorf("GetBanyanClient failed: %v", err)
-		goto exit
-	}
+	//cli, err := r.cluster.GetBanyanClient(r.c.ClusterConfig.NsName, r.c.ClusterConfig.TableName, 3000, 3)
+	//key := r.sqlcfg.QueueKey
+	/*
+		if err != nil {
+			log.Errorf("GetBanyanClient failed: %v", err)
+			goto exit
+		}
+	*/
 	for {
 		select {
 		case sqlQuary := <-r.sqlChan:
-			_, err = cli.Qpush(key, sqlQuary)
-			if err != nil {
-				log.Errorf("qpush failed: %v", err)
-				goto exit
-			}
+			/*
+				_, err = cli.Qpush(key, sqlQuary)
+				if err != nil {
+					log.Errorf("qpush failed: %v", err)
+					goto exit
+				}
+			*/
 			log.Infof("sqlQuary:(%s)", sqlQuary)
 		case <-r.exitChan:
 			goto exit
