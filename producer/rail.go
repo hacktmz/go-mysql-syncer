@@ -378,9 +378,9 @@ func typeof(v interface{}) string {
 	case int64:
 		return "num"
 	case float64:
-		return "num"
+		return "float"
 	case float32:
-		return "num"
+		return "float"
 	case bool:
 		return "num"
 	case nil:
@@ -449,6 +449,15 @@ func (r *Rail) updateSql(msg Message) int {
 							sqlStart = sqlStart + fmt.Sprintf("%s = null", k)
 						} else {
 							sqlStart = sqlStart + fmt.Sprintf(",%s = null", k)
+						}
+						count++
+						processedString[k] = 1
+					} else if typeof(v[k]) == "float" {
+						log.Debugf("k1 = %s  v1 = %f type= %s", k, v[k], typeof(v[k]))
+						if count == 0 {
+							sqlStart = sqlStart + fmt.Sprintf("%s = %f", k, v[k])
+						} else {
+							sqlStart = sqlStart + fmt.Sprintf(",%s = %f", k, v[k])
 						}
 						count++
 						processedString[k] = 1
@@ -599,6 +608,13 @@ func (r *Rail) insertSql(msg Message) int {
 						sqlMid = sqlMid + fmt.Sprintf("(null")
 					} else {
 						sqlMid = sqlMid + fmt.Sprintf(",null")
+					}
+				} else if typeof(v[k]) == "float" {
+					log.Debugf("k1 = %s  v1 = %f type= %s", k, v[k], typeof(v[k]))
+					if i == 0 {
+						sqlMid = sqlMid + fmt.Sprintf("(%f", v[k])
+					} else {
+						sqlMid = sqlMid + fmt.Sprintf(",%f", v[k])
 					}
 				}
 			}
