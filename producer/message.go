@@ -44,7 +44,7 @@ type Message struct {
 func NewMessage(id string, re *canal.RowsEvent, columns_map *map[string][]string) *Message {
 	//自己处理库表名
 	schema_table := fmt.Sprintf("%s.%s", re.Table.Schema, re.Table.Name)
-	log.Infof(" map:%s", *columns_map)
+	log.Debugf(" map:%s", *columns_map)
 	columns, ok := (*columns_map)[schema_table]
 	/* 如果 ok 是 true, 则存在，否则不存在 */
 	columnsExist := false

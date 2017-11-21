@@ -486,7 +486,7 @@ func (r *Rail) updateSql(msg Message) int {
 		}
 
 		sql = sqlStart + sqlMid1 + sqlMid + sqlEnd
-		log.Infof("update sql: %s", sql)
+		log.Debugf("update sql: %s", sql)
 	} else {
 		log.Errorf("not update sql")
 		return -1
@@ -550,7 +550,7 @@ func (r *Rail) deleteSql(msg Message) int {
 			}
 		}
 		sql = sqlStart + sqlMid + sqlEnd
-		log.Infof("delete sql %s", sql)
+		log.Debugf("delete sql %s", sql)
 	} else {
 		log.Errorf("not delete sql")
 		return -1
@@ -618,7 +618,7 @@ func (r *Rail) insertSql(msg Message) int {
 			}
 		}
 		sql = sqlStart + sqlMid + sqlEnd
-		log.Infof("sqlQuary = %s", sql)
+		log.Debugf("sqlQuary = %s", sql)
 	} else {
 		log.Errorf("not insert sql")
 		return -1
@@ -794,9 +794,10 @@ exit:
 }
 
 func (r *Rail) sqlProcessing() {
-	//cli, err := r.cluster.GetBanyanClient(r.c.ClusterConfig.NsName, r.c.ClusterConfig.TableName, 3000, 3)
-	//key := r.sqlcfg.QueueKey
 	/*
+		cli, err := r.cluster.GetBanyanClient(r.c.ClusterConfig.NsName, r.c.ClusterConfig.TableName, 3000, 3)
+		key := r.sqlcfg.QueueKey
+
 		if err != nil {
 			log.Errorf("GetBanyanClient failed: %v", err)
 			goto exit
