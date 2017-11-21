@@ -1,8 +1,9 @@
 # goproducer
 - 一个基于go-mysql &amp;gorail二次开发的binlog解析工具，最终生成SQL语句使用MQ发送到消费者进行执行（这里使用banyandb的Queue可更换kafka）
-- 增加了修改表结构后依然能正常工作的特性
+- 增加了修改表结构（alter table）后依然能正常工作的特性
 - 多个mysql同时处理的功能
 - 解决跨机房mysql自带同步缓慢的问题
+- * 修改了go-mysql源码所以必须使用vendor下的包
 
 ## build
 - make
