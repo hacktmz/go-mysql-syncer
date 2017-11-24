@@ -43,7 +43,6 @@ type Rail struct {
 
 	idChan   chan MessageID
 	exitChan chan struct{}
-	sqlChan  chan string
 
 	pos     *MysqlPos
 	posLock sync.Mutex
@@ -54,6 +53,7 @@ type Rail struct {
 	IsRestart  bool
 	ColumnsMap map[string][]string
 	cluster    *banyan_api.ClusterClient
+	client     *banyan_api.BanyanClient
 	sqlcfg     MysqlConfig
 }
 
@@ -100,18 +100,22 @@ func NewRail(c *Config, mysqlcfg MysqlConfig) (*Rail, error) {
 			c:          c,
 			canal:      canalIns,
 			idChan:     make(chan MessageID, 4096),
-			sqlChan:    make(chan string, 4096),
 			exitChan:   make(chan struct{}),
 			IsRestart:  false,
 			ColumnsMap: make(map[string][]string),
 		}
 
-		log.Errorf("ns:%s,table:%s", c.ClusterConfig.NsName, c.ClusterConfig.TableName)
+		log.Errorf("ns:%s,table:%s", mysqlcfg.NsName, mysqlcfg.TableName)
 		clusters := make([]string, 0)
 		for _, v := range c.ClusterConfig.Agents {
 			clusters = append(clusters, v)
 		}
 		r.cluster = banyan_api.NewClusterClient(clusters)
+		r.client, err = r.cluster.GetBanyanClient(mysqlcfg.NsName, mysqlcfg.TableName, 3000, 3)
+		if err != nil {
+			log.Errorf("GetBanyanClient failed: %v", err)
+			return nil, err
+		}
 		r.sqlcfg = mysqlcfg
 		//注册RowsEventHandler
 		r.canal.SetEventHandler(r)
@@ -129,9 +133,6 @@ func NewRail(c *Config, mysqlcfg MysqlConfig) (*Rail, error) {
 
 		//定时保存binlog position
 		r.waitGroup.Wrap(func() { r.saveMasterInfoLoop() })
-
-		//启动msg id分配器
-		r.waitGroup.Wrap(func() { r.sqlProcessing() })
 
 		log.Info("rail start ok. id = %s", r.sqlcfg.Id)
 		return r, nil
@@ -164,34 +165,31 @@ func (r *Rail) Close() {
 func (r *Rail) OnDDL(nextPos mysql.Position, queryEvent *replication.QueryEvent) error {
 	query := string(queryEvent.Query)
 	if strings.ToUpper(query) != "BEGIN" {
-		query = strings.ToLower(query)
-		newquery := make([]byte, 0)
-		num := 0
-		for i, _ := range query {
-			if query[i] == 32 { //space
-				num = num + 1
-				if num == 2 {
-					num = num - 1
-					continue
+		/*
+			log.Infof("111pos:%d schema:%s statement: %s ", nextPos.Pos, queryEvent.Schema, query)
+
+				query = strings.ToLower(query)
+				newquery := make([]byte, 0)
+				num := 0
+				for i, _ := range query {
+					if query[i] == 32 { //space
+						num = num + 1
+						if num == 2 {
+							num = num - 1
+							continue
+						}
+						newquery = append(newquery, query[i])
+					} else {
+						num = 0
+						newquery = append(newquery, query[i])
+					}
 				}
-				newquery = append(newquery, query[i])
-			} else {
-				num = 0
-				newquery = append(newquery, query[i])
-			}
-		}
-		strQuery := string(newquery)
+				strQuery := string(newquery)
+		*/
+		strQuery := strings.ToLower(query)
 		var strid string
 		if string(queryEvent.Schema) != "" {
 			log.Infof("pos:%d schema:%s statement: %s ", nextPos.Pos, queryEvent.Schema, strQuery)
-			/*
-				if strings.Contains(strQuery, "create database") {
-					err := r.saveMasterInfo(nextPos.Name, nextPos.Pos)
-					if err != nil {
-						log.Warnf("save binlog position error  - %s", err)
-					}
-				}
-			*/
 			if strings.Contains(strQuery, "drop") {
 				err := r.saveMasterInfo(nextPos.Name, nextPos.Pos)
 				if err != nil {
@@ -209,14 +207,17 @@ func (r *Rail) OnDDL(nextPos mysql.Position, queryEvent *replication.QueryEvent)
 				if err != nil {
 					log.Warnf("save binlog position error - %s", err)
 				}
-				r.sqlChan <- strid + "|" + strQuery
+				strQuery = strid + "|" + strQuery
+				r.sqlProcessing(strQuery, "common")
 			}
 			if strings.Contains(strQuery, "create table") { //原操作没有指定库名，必须拼接上
-				pos := -1
-				pos = strings.Index(strQuery, "create table ")
-				strQuery = strQuery[pos+len("create table ") : len(strQuery)]
-				newQuery := fmt.Sprintf("create table %s.", queryEvent.Schema)
-				newQuery = newQuery + strQuery
+				/*
+					pos := -1
+					pos = strings.Index(strQuery, "create table ")
+					strQuery = strQuery[pos+len("create table ") : len(strQuery)]
+					newQuery := fmt.Sprintf("create table %s.", queryEvent.Schema)
+					newQuery = newQuery + strQuery
+				*/
 				select {
 				case id := <-r.idChan:
 					strid = string(id[:])
@@ -225,7 +226,8 @@ func (r *Rail) OnDDL(nextPos mysql.Position, queryEvent *replication.QueryEvent)
 				if err != nil {
 					log.Warnf("save binlog position error - %s", err)
 				}
-				r.sqlChan <- strid + "|" + newQuery
+				strQuery = strid + "|" + strQuery
+				r.sqlProcessing(strQuery, string(queryEvent.Schema))
 			}
 		} else {
 			log.Infof("pos:%d schema is null, statement: %s", nextPos.Pos, strQuery)
@@ -244,7 +246,8 @@ func (r *Rail) OnDDL(nextPos mysql.Position, queryEvent *replication.QueryEvent)
 					strid = string(id[:])
 				}
 				r.ProcessAlter(queryEvent)
-				r.sqlChan <- strid + "|" + strQuery
+				strQuery = strid + "|" + strQuery
+				r.sqlProcessing(strQuery, "common")
 				err := r.saveMasterInfo(nextPos.Name, nextPos.Pos)
 				if err != nil {
 					log.Warnf("save binlog position error - %s", err)
@@ -540,8 +543,8 @@ func (r *Rail) updateSql(msg Message) int {
 		return -1
 	}
 
-	r.sqlChan <- (msg.ID + "|" + sql)
-
+	sql = msg.ID + "|" + sql
+	r.sqlProcessing(sql, msg.Schema)
 	return 0
 }
 
@@ -604,7 +607,8 @@ func (r *Rail) deleteSql(msg Message) int {
 		return -1
 	}
 
-	r.sqlChan <- (msg.ID + "|" + sql)
+	sql = msg.ID + "|" + sql
+	r.sqlProcessing(sql, msg.Schema)
 	return 0
 }
 
@@ -679,7 +683,8 @@ func (r *Rail) insertSql(msg Message) int {
 		return -1
 	}
 
-	r.sqlChan <- (msg.ID + "|" + sql)
+	sql = msg.ID + "|" + sql
+	r.sqlProcessing(sql, msg.Schema)
 	return 0
 }
 
@@ -848,28 +853,13 @@ exit:
 	log.Infof("ID: closing")
 }
 
-func (r *Rail) sqlProcessing() {
-	cli, err := r.cluster.GetBanyanClient(r.c.ClusterConfig.NsName, r.c.ClusterConfig.TableName, 3000, 3)
-	key := r.sqlcfg.QueueKey
-
+func (r *Rail) sqlProcessing(quary string, schema string) error {
+	_, err := r.client.Qpush(schema, quary)
 	if err != nil {
-		log.Errorf("GetBanyanClient failed: %v", err)
-		goto exit
+		log.Errorf("qpush failed: %v", err)
+		r.Close()
+		return err
 	}
-	for {
-		select {
-		case sqlQuary := <-r.sqlChan:
-			_, err = cli.Qpush(key, sqlQuary)
-			if err != nil {
-				log.Errorf("qpush failed: %v", err)
-				goto exit
-			}
-			log.Infof("sqlQuary:(%s)", sqlQuary)
-		case <-r.exitChan:
-			goto exit
-		}
-	}
-
-exit:
-	log.Infof("sqlProcessing: closing")
+	log.Infof("Qpush schema:%s  sql:(%s)", schema, quary)
+	return nil
 }

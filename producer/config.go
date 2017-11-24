@@ -15,9 +15,7 @@ type Config struct {
 	ClusterConfig *ClusterConfig `toml:"clusters"`
 }
 type ClusterConfig struct {
-	Agents    []string `toml:"agents"`
-	NsName    string   `toml:"nsname"`
-	TableName string   `toml:"tablename"`
+	Agents []string `toml:"agents"`
 }
 type LogConfig struct {
 	Path         string `toml:"log_path"`
@@ -27,13 +25,15 @@ type LogConfig struct {
 }
 
 type MysqlConfig struct {
-	Id       string `toml:"id"`
-	Addr     string `toml:"addr"`
-	User     string `toml:"user"`
-	Password string `toml:"password"`
-	Flavor   string `toml:"flavor"`
-	DataPath string `toml:"data_path"`
-	QueueKey string `toml:"queue"`
+	Id        string `toml:"id"`
+	Addr      string `toml:"addr"`
+	User      string `toml:"user"`
+	Password  string `toml:"password"`
+	Flavor    string `toml:"flavor"`
+	DataPath  string `toml:"data_path"`
+	QueueKey  string `toml:"queue"`
+	NsName    string `toml:"nsname"`
+	TableName string `toml:"tablename"`
 }
 
 //NewConfigWithFile 读取配置文件

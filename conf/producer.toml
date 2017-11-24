@@ -5,35 +5,24 @@ binlog_flush_ms = 2000  #2s刷新一次
 
 [clusters]
 agents = ["10.10.106.40:20600"]
-nsname = "ns1"
-tablename = "table1"
 
 [log]
 log_path = "log/producer.log"
 # 0 单个文件 1按天分 2按小时分
 type = 2
 highlighting = false
-level = "debug"
+level = "info"
 
 #定义订阅的mysql主库的连接信息
 [[mysql]]
 id = "1"
-addr = "10.10.106.68:3307"
-user = "backup"
-password = "backup"
+addr = "10.10.106.70:3306"
+user = "inception"
+password = "inception"
 flavor = "mysql"  
 data_path = "./conf/master1.info"
-queue = "sql"
+nsname = "ns1"
+tablename = "table1"
 
-
-
-[[mysql]]
-id = "2"
-addr = "10.10.106.71:3306"
-user = "backup"
-password = "backup"
-flavor = "mysql"
-data_path = "./conf/master2.info"
-queue = "sql"
 
  
