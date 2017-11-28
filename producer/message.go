@@ -22,7 +22,7 @@ type MessageID [MsgIDLength]byte
 
 //Message 消息基类
 type Message struct {
-	ID        string `json:"id"`
+	ID        int64  `json:"id"`
 	Timestamp int64  `json:"timestamp"`
 	Attempts  uint16 `json:"attempts"`
 
@@ -41,7 +41,7 @@ type Message struct {
 }
 
 //NewMessage 初始化消息
-func NewMessage(id string, re *canal.RowsEvent, columns_map *map[string][]string) *Message {
+func NewMessage(id int64, re *canal.RowsEvent, columns_map *map[string][]string) *Message {
 	//自己处理库表名
 	schema_table := fmt.Sprintf("%s.%s", re.Table.Schema, re.Table.Name)
 	log.Debugf(" map:%s", *columns_map)

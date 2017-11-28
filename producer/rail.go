@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -41,7 +40,8 @@ type Rail struct {
 	c     *Config
 	canal *canal.Canal
 
-	idChan   chan MessageID
+	//idChan   chan MessageID
+	idChan   chan int64
 	exitChan chan struct{}
 
 	pos     *MysqlPos
@@ -55,6 +55,7 @@ type Rail struct {
 	cluster    *banyan_api.ClusterClient
 	client     *banyan_api.BanyanClient
 	sqlcfg     MysqlConfig
+	oldID      int64
 }
 
 //NewRail 初始化
@@ -97,12 +98,14 @@ func NewRail(c *Config, mysqlcfg MysqlConfig) (*Rail, error) {
 		return nil, err
 	} else {
 		r := &Rail{
-			c:          c,
-			canal:      canalIns,
-			idChan:     make(chan MessageID, 4096),
+			c:     c,
+			canal: canalIns,
+			//idChan:     make(chan MessageID, 4096),
+			idChan:     make(chan int64, 4096),
 			exitChan:   make(chan struct{}),
 			IsRestart:  false,
 			ColumnsMap: make(map[string][]string),
+			oldID:      0,
 		}
 
 		log.Errorf("ns:%s,table:%s", mysqlcfg.NsName, mysqlcfg.TableName)
@@ -187,7 +190,7 @@ func (r *Rail) OnDDL(nextPos mysql.Position, queryEvent *replication.QueryEvent)
 				strQuery := string(newquery)
 		*/
 		strQuery := strings.ToLower(query)
-		var strid string
+		var id int64
 		if string(queryEvent.Schema) != "" {
 			log.Infof("pos:%d schema:%s statement: %s ", nextPos.Pos, queryEvent.Schema, strQuery)
 			if strings.Contains(strQuery, "drop") {
@@ -200,15 +203,13 @@ func (r *Rail) OnDDL(nextPos mysql.Position, queryEvent *replication.QueryEvent)
 			}
 			if strings.Contains(strQuery, "create database") {
 				select {
-				case id := <-r.idChan:
-					strid = string(id[:])
+				case id = <-r.idChan:
 				}
 				err := r.saveMasterInfo(nextPos.Name, nextPos.Pos)
 				if err != nil {
 					log.Warnf("save binlog position error - %s", err)
 				}
-				strQuery = strid + "|" + strQuery
-				r.sqlProcessing(strQuery, "common")
+				r.sqlProcessing(id, strQuery, "common")
 			}
 			if strings.Contains(strQuery, "create table") { //原操作没有指定库名，必须拼接上
 				/*
@@ -219,15 +220,13 @@ func (r *Rail) OnDDL(nextPos mysql.Position, queryEvent *replication.QueryEvent)
 					newQuery = newQuery + strQuery
 				*/
 				select {
-				case id := <-r.idChan:
-					strid = string(id[:])
+				case id = <-r.idChan:
 				}
 				err := r.saveMasterInfo(nextPos.Name, nextPos.Pos)
 				if err != nil {
 					log.Warnf("save binlog position error - %s", err)
 				}
-				strQuery = strid + "|" + strQuery
-				r.sqlProcessing(strQuery, string(queryEvent.Schema))
+				r.sqlProcessing(id, strQuery, string(queryEvent.Schema))
 			}
 		} else {
 			log.Infof("pos:%d schema is null, statement: %s", nextPos.Pos, strQuery)
@@ -242,12 +241,10 @@ func (r *Rail) OnDDL(nextPos mysql.Position, queryEvent *replication.QueryEvent)
 			}
 			if strings.Contains(strQuery, "alter table") {
 				select {
-				case id := <-r.idChan:
-					strid = string(id[:])
+				case id = <-r.idChan:
 				}
 				r.ProcessAlter(queryEvent)
-				strQuery = strid + "|" + strQuery
-				r.sqlProcessing(strQuery, "common")
+				r.sqlProcessing(id, strQuery, "common")
 				err := r.saveMasterInfo(nextPos.Name, nextPos.Pos)
 				if err != nil {
 					log.Warnf("save binlog position error - %s", err)
@@ -377,8 +374,7 @@ func (r *Rail) OnRow(e *canal.RowsEvent) error {
 	*/
 	select {
 	case id := <-r.idChan:
-		strid := string(id[:])
-		msg := NewMessage(strid, e, &r.ColumnsMap)
+		msg := NewMessage(id, e, &r.ColumnsMap)
 
 		//log.Infof("push message(id=%s db=%s table=%s action=%s pk=%s) to topic", msg.ID, msg.Schema, msg.Table, msg.Action, msg.Brief())
 		log.Debugf("message = %s", msg.Detail())
@@ -543,8 +539,7 @@ func (r *Rail) updateSql(msg Message) int {
 		return -1
 	}
 
-	sql = msg.ID + "|" + sql
-	r.sqlProcessing(sql, msg.Schema)
+	r.sqlProcessing(msg.ID, sql, msg.Schema)
 	return 0
 }
 
@@ -607,8 +602,7 @@ func (r *Rail) deleteSql(msg Message) int {
 		return -1
 	}
 
-	sql = msg.ID + "|" + sql
-	r.sqlProcessing(sql, msg.Schema)
+	r.sqlProcessing(msg.ID, sql, msg.Schema)
 	return 0
 }
 
@@ -683,8 +677,7 @@ func (r *Rail) insertSql(msg Message) int {
 		return -1
 	}
 
-	sql = msg.ID + "|" + sql
-	r.sqlProcessing(sql, msg.Schema)
+	r.sqlProcessing(msg.ID, sql, msg.Schema)
 	return 0
 }
 
@@ -826,6 +819,7 @@ func (r *Rail) saveMasterInfoLoop() {
 
 }
 
+/*
 func (r *Rail) idPump() {
 	factory := &guidFactory{}
 	lastError := time.Unix(0, 0)
@@ -852,14 +846,34 @@ func (r *Rail) idPump() {
 exit:
 	log.Infof("ID: closing")
 }
+*/
+func (r *Rail) idPump() {
+	var id int64
+	id = 0
+	for {
+		id++
+		select {
+		case r.idChan <- id:
+		case <-r.exitChan:
+			goto exit
+		}
+	}
 
-func (r *Rail) sqlProcessing(quary string, schema string) error {
+exit:
+	log.Infof("ID: closing")
+}
+func (r *Rail) sqlProcessing(id int64, quary string, schema string) error {
+	if id <= r.oldID {
+		log.Errorf("id  error qpush failed.id:%d schema:%s  sql:(%s)", id, schema, quary)
+		r.Close()
+	}
 	_, err := r.client.Qpush(schema, quary)
 	if err != nil {
 		log.Errorf("qpush failed: %v", err)
 		r.Close()
 		return err
 	}
-	log.Infof("Qpush schema:%s  sql:(%s)", schema, quary)
+	log.Infof("Qpush id :%d schema:%s  sql:(%s)", id, schema, quary)
+	r.oldID = id
 	return nil
 }
