@@ -168,28 +168,29 @@ func (r *Rail) Close() {
 func (r *Rail) OnDDL(nextPos mysql.Position, queryEvent *replication.QueryEvent) error {
 	query := string(queryEvent.Query)
 	if strings.ToUpper(query) != "BEGIN" {
-		/*
-			log.Infof("111pos:%d schema:%s statement: %s ", nextPos.Pos, queryEvent.Schema, query)
 
-				query = strings.ToLower(query)
-				newquery := make([]byte, 0)
-				num := 0
-				for i, _ := range query {
-					if query[i] == 32 { //space
-						num = num + 1
-						if num == 2 {
-							num = num - 1
-							continue
-						}
-						newquery = append(newquery, query[i])
-					} else {
-						num = 0
-						newquery = append(newquery, query[i])
-					}
+		log.Debugf("111pos:%d schema:%s statement: %s ", nextPos.Pos, queryEvent.Schema, query)
+
+		query = strings.ToLower(query)
+		tempStr := make([]string, 0)
+		num := 0
+		for _, v := range query {
+			if v == 32 { //space
+				num = num + 1
+				if num == 2 {
+					num = num - 1
+					continue
 				}
-				strQuery := string(newquery)
-		*/
-		strQuery := strings.ToLower(query)
+				tempStr = append(tempStr, string(v))
+			} else {
+				num = 0
+				tempStr = append(tempStr, string(v))
+			}
+		}
+		strQuery := ""
+		for _, v := range tempStr {
+			strQuery = strQuery + v
+		}
 		var id int64
 		if string(queryEvent.Schema) != "" {
 			log.Infof("pos:%d schema:%s statement: %s ", nextPos.Pos, queryEvent.Schema, strQuery)
@@ -216,8 +217,8 @@ func (r *Rail) OnDDL(nextPos mysql.Position, queryEvent *replication.QueryEvent)
 					pos := -1
 					pos = strings.Index(strQuery, "create table ")
 					strQuery = strQuery[pos+len("create table ") : len(strQuery)]
-					newQuery := fmt.Sprintf("create table %s.", queryEvent.Schema)
-					newQuery = newQuery + strQuery
+					tempStr := fmt.Sprintf("create table %s.", queryEvent.Schema)
+					tempStr = tempStr + strQuery
 				*/
 				select {
 				case id = <-r.idChan:
@@ -264,22 +265,25 @@ func (r *Rail) ProcessAlter(queryEvent *replication.QueryEvent) error {
 	schemaTable := "" //fmt.Sprintf("%s.%s", queryEvent.Schema, queryEvent.Table.Name)
 	fields := make([]string, 0)
 	query := strings.ToLower(string(queryEvent.Query))
-	newquery := make([]byte, 0)
+	tempStr := make([]string, 0)
 	num := 0
-	for i, _ := range query {
-		if query[i] == 32 { //space
+	for _, v := range query {
+		if v == 32 { //space
 			num = num + 1
 			if num == 2 {
 				num = num - 1
 				continue
 			}
-			newquery = append(newquery, query[i])
+			tempStr = append(tempStr, string(v))
 		} else {
 			num = 0
-			newquery = append(newquery, query[i])
+			tempStr = append(tempStr, string(v))
 		}
 	}
-	strQuery := string(newquery)
+	strQuery := ""
+	for _, v := range tempStr {
+		strQuery = strQuery + v
+	}
 	log.Debugf("alter = %s ", string(strQuery))
 	pos := -1
 	pos = strings.Index(strQuery, "alter table ")
