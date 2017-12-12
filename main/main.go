@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	configFile = flag.String("config", "./conf/producer.toml", "go-rail config file")
+	configFile = flag.String("config", "./conf/producer.toml", "go-producer config file")
 	binlogName = flag.String("binlog_name", "", "binlog file name")
 	binlogPos  = flag.Int64("binlog_pos", 0, "binlog position")
 )
@@ -40,7 +40,7 @@ func main() {
 		log.Fatalf("config load failed.detail=%s", errors.ErrorStack(err))
 	}
 	for _, v := range *config.MysqlConfig {
-		r, err := producer.NewRail(config, v)
+		r, err := producer.NewProducer(config, v)
 		defer r.Close()
 
 		if err != nil {
