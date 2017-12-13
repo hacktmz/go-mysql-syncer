@@ -97,7 +97,7 @@ func NewProducer(c *Config, mysqlcfg MysqlConfig) (*Producer, error) {
 		log.Fatal(err)
 		return nil, err
 	} else {
-		r := &Producer{
+		p := &Producer{
 			c:     c,
 			canal: canalIns,
 			//idChan:     make(chan MessageID, 4096),
@@ -113,59 +113,59 @@ func NewProducer(c *Config, mysqlcfg MysqlConfig) (*Producer, error) {
 		for _, v := range c.ClusterConfig.Agents {
 			clusters = append(clusters, v)
 		}
-		r.cluster = banyan_api.NewClusterClient(clusters)
-		r.client, err = r.cluster.GetBanyanClient(mysqlcfg.NsName, mysqlcfg.TableName, 3000, 3)
+		p.cluster = banyan_api.NewClusterClient(clusters)
+		p.client, err = p.cluster.GetBanyanClient(mysqlcfg.NsName, mysqlcfg.TableName, 3000, 3)
 		if err != nil {
 			log.Errorf("GetBanyanClient failed: %v", err)
 			return nil, err
 		}
-		r.sqlcfg = mysqlcfg
+		p.sqlcfg = mysqlcfg
 		//注册RowsEventHandler
-		r.canal.SetEventHandler(r)
+		p.canal.SetEventHandler(p)
 
-		pos, err := r.loadMasterInfo()
+		pos, err := p.loadMasterInfo()
 		if err != nil {
 			log.Fatalf("load binlog position error - %s", err)
 		}
 
 		//启动canal
-		r.canal.StartFrom(*pos)
+		p.canal.StartFrom(*pos)
 
 		//启动msg id分配器
-		r.waitGroup.Wrap(func() { r.idPump() })
+		p.waitGroup.Wrap(func() { p.idPump() })
 
 		//定时保存binlog position
-		r.waitGroup.Wrap(func() { r.saveMasterInfoLoop() })
+		p.waitGroup.Wrap(func() { p.saveMasterInfoLoop() })
 
-		log.Info("Producer start ok. id = %s", r.sqlcfg.Id)
-		return r, nil
+		log.Info("Producer start ok. id = %s", p.sqlcfg.Id)
+		return p, nil
 	}
 }
 
 //Close 关闭Producer,释放资源
-func (r *Producer) Close() {
+func (p *Producer) Close() {
 
 	//关闭canal
-	r.canal.Close()
+	p.canal.Close()
 
 	//save binlog postion
 
-	pos := r.canal.SyncedPosition()
-	err := r.saveMasterInfo(pos.Name, pos.Pos)
+	pos := p.canal.SyncedPosition()
+	err := p.saveMasterInfo(pos.Name, pos.Pos)
 	if err != nil {
 		log.Warnf("save binlog position error when closing - %s", err)
 	}
 	//关闭topic
-	//err = r.topic.Close()
+	//err = p.topic.Close()
 
-	close(r.exitChan)
+	close(p.exitChan)
 
-	r.waitGroup.Wait()
+	p.waitGroup.Wait()
 
-	log.Info("Producer safe close. id = %s", r.sqlcfg.Id)
+	log.Info("Producer safe close. id = %s", p.sqlcfg.Id)
 }
 
-func (r *Producer) OnDDL(nextPos mysql.Position, queryEvent *replication.QueryEvent) error {
+func (p *Producer) OnDDL(nextPos mysql.Position, queryEvent *replication.QueryEvent) error {
 	query := string(queryEvent.Query)
 	if strings.ToUpper(query) != "BEGIN" {
 
@@ -195,22 +195,22 @@ func (r *Producer) OnDDL(nextPos mysql.Position, queryEvent *replication.QueryEv
 		if string(queryEvent.Schema) != "" {
 			log.Infof("pos:%d schema:%s statement: %s ", nextPos.Pos, queryEvent.Schema, strQuery)
 			if strings.Contains(strQuery, "drop") {
-				err := r.saveMasterInfo(nextPos.Name, nextPos.Pos)
+				err := p.saveMasterInfo(nextPos.Name, nextPos.Pos)
 				if err != nil {
 					log.Warnf("save binlog position error  - %s", err)
 				}
-				defer r.Close()
+				defer p.Close()
 				return errors.New("drop database need to sync binlog pos")
 			}
 			if strings.Contains(strQuery, "create database") {
 				select {
-				case id = <-r.idChan:
+				case id = <-p.idChan:
 				}
-				err := r.saveMasterInfo(nextPos.Name, nextPos.Pos)
+				err := p.saveMasterInfo(nextPos.Name, nextPos.Pos)
 				if err != nil {
 					log.Warnf("save binlog position error - %s", err)
 				}
-				r.sqlProcessing(id, strQuery, "common")
+				p.sqlProcessing(id, strQuery, "common")
 			}
 			if strings.Contains(strQuery, "create table") { //原操作没有指定库名，必须拼接上
 				/*
@@ -221,32 +221,32 @@ func (r *Producer) OnDDL(nextPos mysql.Position, queryEvent *replication.QueryEv
 					tempStr = tempStr + strQuery
 				*/
 				select {
-				case id = <-r.idChan:
+				case id = <-p.idChan:
 				}
-				err := r.saveMasterInfo(nextPos.Name, nextPos.Pos)
+				err := p.saveMasterInfo(nextPos.Name, nextPos.Pos)
 				if err != nil {
 					log.Warnf("save binlog position error - %s", err)
 				}
-				r.sqlProcessing(id, strQuery, string(queryEvent.Schema))
+				p.sqlProcessing(id, strQuery, string(queryEvent.Schema))
 			}
 		} else {
 			log.Infof("pos:%d schema is null, statement: %s", nextPos.Pos, strQuery)
 			//alter table
 			if strings.Contains(strQuery, "create table") {
-				err := r.saveMasterInfo(nextPos.Name, nextPos.Pos)
+				err := p.saveMasterInfo(nextPos.Name, nextPos.Pos)
 				if err != nil {
 					log.Warnf("save binlog position error  - %s", err)
 				}
-				defer r.Close()
+				defer p.Close()
 				return errors.New("create table but dont have schema")
 			}
 			if strings.Contains(strQuery, "alter table") {
 				select {
-				case id = <-r.idChan:
+				case id = <-p.idChan:
 				}
-				r.ProcessAlter(queryEvent)
-				r.sqlProcessing(id, strQuery, "common")
-				err := r.saveMasterInfo(nextPos.Name, nextPos.Pos)
+				p.ProcessAlter(queryEvent)
+				p.sqlProcessing(id, strQuery, "common")
+				err := p.saveMasterInfo(nextPos.Name, nextPos.Pos)
 				if err != nil {
 					log.Warnf("save binlog position error - %s", err)
 				}
@@ -261,7 +261,7 @@ func (r *Producer) OnDDL(nextPos mysql.Position, queryEvent *replication.QueryEv
 	return nil
 }
 
-func (r *Producer) ProcessAlter(queryEvent *replication.QueryEvent) error {
+func (p *Producer) ProcessAlter(queryEvent *replication.QueryEvent) error {
 	schemaTable := "" //fmt.Sprintf("%s.%s", queryEvent.Schema, queryEvent.Table.Name)
 	fields := make([]string, 0)
 	query := strings.ToLower(string(queryEvent.Query))
@@ -292,7 +292,7 @@ func (r *Producer) ProcessAlter(queryEvent *replication.QueryEvent) error {
 	pos = strings.Index(strQuery, " ")
 	schemaTable = strQuery[0:pos]
 	log.Debugf("33 = %s ", schemaTable)
-	columns, ok := r.ColumnsMap[schemaTable]
+	columns, ok := p.ColumnsMap[schemaTable]
 	//如果 ok 是 true, 则存在，否则不存在 /
 
 	if ok {
@@ -346,13 +346,13 @@ func (r *Producer) ProcessAlter(queryEvent *replication.QueryEvent) error {
 
 	strQuery = strings.TrimSpace(strQuery)
 	log.Debugf(" = %s  pos =%d   fields =%s", strQuery, pos, fields)
-	r.ColumnsMap[schemaTable] = fields
-	log.Debugf("###= %s", r.ColumnsMap)
+	p.ColumnsMap[schemaTable] = fields
+	log.Debugf("###= %s", p.ColumnsMap)
 	return nil
 }
 
 //onRow 实现接口RowEventHandler,处理binlog事件
-func (r *Producer) OnRow(e *canal.RowsEvent) error {
+func (p *Producer) OnRow(e *canal.RowsEvent) error {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Errorf("internal error - %s", err)
@@ -360,15 +360,15 @@ func (r *Producer) OnRow(e *canal.RowsEvent) error {
 	}()
 	log.Debugf("Action = %s", e.Action)
 	/*
-		if r.c.TopicConfig.Schema != "" && e.Table.Schema != r.c.TopicConfig.Schema {
+		if p.c.TopicConfig.Schema != "" && e.Table.Schema != p.c.TopicConfig.Schema {
 			return nil
 		}
 
-		if r.c.TopicConfig.Table != "" {
-			regExp, err := regexp.Compile(r.c.TopicConfig.Table)
+		if p.c.TopicConfig.Table != "" {
+			regExp, err := regexp.Compile(p.c.TopicConfig.Table)
 			//正则表达式出错
 			if err != nil {
-				log.Errorf("regexp(%s) error - %s", r.c.TopicConfig.Table, err)
+				log.Errorf("regexp(%s) error - %s", p.c.TopicConfig.Table, err)
 				return err
 			}
 			if !regExp.Match([]byte(e.Table.Name)) {
@@ -377,18 +377,18 @@ func (r *Producer) OnRow(e *canal.RowsEvent) error {
 		}
 	*/
 	select {
-	case id := <-r.idChan:
-		msg := NewMessage(id, e, &r.ColumnsMap)
+	case id := <-p.idChan:
+		msg := NewMessage(id, e, &p.ColumnsMap)
 
 		//log.Infof("push message(id=%s db=%s table=%s action=%s pk=%s) to topic", msg.ID, msg.Schema, msg.Table, msg.Action, msg.Brief())
 		log.Debugf("message = %s", msg.Detail())
 		var res int = 0
 		if msg.Action == "insert" {
-			res = r.insertSql(*msg) //保证msg只读
+			res = p.insertSql(*msg) //保证msg只读
 		} else if msg.Action == "delete" {
-			res = r.deleteSql(*msg)
+			res = p.deleteSql(*msg)
 		} else if msg.Action == "update" {
-			res = r.updateSql(*msg)
+			res = p.updateSql(*msg)
 		} else {
 			log.Errorf("Action unkonw!")
 			return errors.New("Action unkonw!")
@@ -436,7 +436,7 @@ func typeof(v interface{}) string {
 	}
 }
 
-func (r *Producer) updateSql(msg Message) int {
+func (p *Producer) updateSql(msg Message) int {
 
 	sql := ""
 	if msg.Action == "update" {
@@ -543,11 +543,11 @@ func (r *Producer) updateSql(msg Message) int {
 		return -1
 	}
 
-	r.sqlProcessing(msg.ID, sql, msg.Schema)
+	p.sqlProcessing(msg.ID, sql, msg.Schema)
 	return 0
 }
 
-func (r *Producer) deleteSql(msg Message) int {
+func (p *Producer) deleteSql(msg Message) int {
 	var sql string = ""
 	if msg.Action == "delete" {
 		sqlStart := fmt.Sprintf("delete from %s.%s where ", msg.Schema, msg.Table)
@@ -606,11 +606,11 @@ func (r *Producer) deleteSql(msg Message) int {
 		return -1
 	}
 
-	r.sqlProcessing(msg.ID, sql, msg.Schema)
+	p.sqlProcessing(msg.ID, sql, msg.Schema)
 	return 0
 }
 
-func (r *Producer) insertSql(msg Message) int {
+func (p *Producer) insertSql(msg Message) int {
 
 	var sql string = ""
 	//insert into schema.table(id,name) values(1,'banli');
@@ -681,46 +681,46 @@ func (r *Producer) insertSql(msg Message) int {
 		return -1
 	}
 
-	r.sqlProcessing(msg.ID, sql, msg.Schema)
+	p.sqlProcessing(msg.ID, sql, msg.Schema)
 	return 0
 }
 
-func (r *Producer) OnRotate(e *replication.RotateEvent) error {
-	return r.saveMasterInfo(string(e.NextLogName), uint32(e.Position))
+func (p *Producer) OnRotate(e *replication.RotateEvent) error {
+	return p.saveMasterInfo(string(e.NextLogName), uint32(e.Position))
 }
 
 //String  实现接口RowEventHandler
-func (r *Producer) String() string {
+func (p *Producer) String() string {
 	return "Producer"
 }
 
-func (r *Producer) getMasterInfoPath() string {
-	return r.sqlcfg.DataPath //+ "/" + "master.info"
+func (p *Producer) getMasterInfoPath() string {
+	return p.sqlcfg.DataPath //+ "/" + "mastep.info"
 }
 
-func (r *Producer) loadMasterInfo() (*mysql.Position, error) {
-	f, err := os.Open(r.getMasterInfoPath())
+func (p *Producer) loadMasterInfo() (*mysql.Position, error) {
+	f, err := os.Open(p.getMasterInfoPath())
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	} else if os.IsNotExist(err) {
 		//文件不存在,默认从最新的位置开始
-		return r.getNewestPos()
+		return p.getNewestPos()
 	}
 
 	defer f.Close()
 
 	var mysqlPos MysqlPos
 	_, err = toml.DecodeReader(f, &mysqlPos)
-	if err != nil || mysqlPos.Addr != r.sqlcfg.Addr || mysqlPos.Name == "" {
-		return r.getNewestPos()
+	if err != nil || mysqlPos.Addr != p.sqlcfg.Addr || mysqlPos.Name == "" {
+		return p.getNewestPos()
 	}
 
 	return &mysql.Position{mysqlPos.Name, mysqlPos.Pos}, nil
 }
 
 //得到最新的binlog位置
-func (r *Producer) getNewestPos() (*mysql.Position, error) {
-	result, err := r.canal.Execute("SHOW MASTER STATUS")
+func (p *Producer) getNewestPos() (*mysql.Position, error) {
+	result, err := p.canal.Execute("SHOW MASTER STATUS")
 	if err != nil {
 		return nil, fmt.Errorf("show master status error - %s", err)
 	}
@@ -732,62 +732,62 @@ func (r *Producer) getNewestPos() (*mysql.Position, error) {
 	binlogName, _ := result.GetStringByName(0, "File")
 	binlogPos, _ := result.GetIntByName(0, "Position")
 
-	log.Infof("fetch mysql(%s)'s the newest pos:(%s, %d)", r.sqlcfg.Addr, binlogName, binlogPos)
+	log.Infof("fetch mysql(%s)'s the newest pos:(%s, %d)", p.sqlcfg.Addr, binlogName, binlogPos)
 
 	return &mysql.Position{binlogName, uint32(binlogPos)}, nil
 }
 
-func (r *Producer) saveMasterInfo(posName string, pos uint32) error {
-	r.posLock.Lock()
-	defer r.posLock.Unlock()
+func (p *Producer) saveMasterInfo(posName string, pos uint32) error {
+	p.posLock.Lock()
+	defer p.posLock.Unlock()
 
 	var buf bytes.Buffer
 	e := toml.NewEncoder(&buf)
 
-	mysqlPos, err := r.loadMasterInfo()
-	if err == nil && r.pos == nil {
-		r.pos = &MysqlPos{
-			Addr: r.sqlcfg.Addr,
+	mysqlPos, err := p.loadMasterInfo()
+	if err == nil && p.pos == nil {
+		p.pos = &MysqlPos{
+			Addr: p.sqlcfg.Addr,
 			Name: mysqlPos.Name,
 			Pos:  mysqlPos.Pos,
 		}
 	}
 
-	if err != nil && r.pos == nil {
-		r.pos = &MysqlPos{
-			Addr: r.sqlcfg.Addr,
+	if err != nil && p.pos == nil {
+		p.pos = &MysqlPos{
+			Addr: p.sqlcfg.Addr,
 			Name: posName,
 			Pos:  pos,
 		}
 	}
 
-	if r.pos.Name == posName && pos <= r.pos.Pos {
+	if p.pos.Name == posName && pos <= p.pos.Pos {
 		return nil
 	} else {
-		r.pos.Name = posName
-		r.pos.Pos = pos
+		p.pos.Name = posName
+		p.pos.Pos = pos
 	}
 
 	/*
-		if r.pos == nil {
+		if p.pos == nil {
 
-			r.pos = &MysqlPos{
-				Addr: r.sqlcfg.Addr,
+			p.pos = &MysqlPos{
+				Addr: p.sqlcfg.Addr,
 				Name: posName,
 				Pos:  pos,
 			}
 
 		} else {
-			if r.pos.Name == posName && r.pos.Pos <= pos {
+			if p.pos.Name == posName && p.pos.Pos <= pos {
 				return nil
 			}
-			r.pos.Name = posName
-			r.pos.Pos = pos
+			p.pos.Name = posName
+			p.pos.Pos = pos
 		}
 	*/
-	e.Encode(r.pos)
+	e.Encode(p.pos)
 
-	f, err := os.Create(r.getMasterInfoPath())
+	f, err := os.Create(p.getMasterInfoPath())
 	if err != nil {
 		log.Warnf("create master info file error - %s", err)
 		return err
@@ -802,20 +802,20 @@ func (r *Producer) saveMasterInfo(posName string, pos uint32) error {
 	return nil
 }
 
-func (r *Producer) saveMasterInfoLoop() {
-	ticker := time.NewTicker(r.c.BinlogFlushMs * time.Millisecond)
+func (p *Producer) saveMasterInfoLoop() {
+	ticker := time.NewTicker(p.c.BinlogFlushMs * time.Millisecond)
 	for {
 		select {
 		case <-ticker.C:
-			pos := r.canal.SyncedPosition()
-			if r.pos == nil || pos.Name != r.pos.Name || pos.Pos != r.pos.Pos {
-				err := r.saveMasterInfo(pos.Name, pos.Pos)
+			pos := p.canal.SyncedPosition()
+			if p.pos == nil || pos.Name != p.pos.Name || pos.Pos != p.pos.Pos {
+				err := p.saveMasterInfo(pos.Name, pos.Pos)
 				if err != nil {
 					log.Warnf("save binlog position error from per second - %s", err)
 				}
 			}
 
-		case <-r.exitChan:
+		case <-p.exitChan:
 			log.Info("save binlog position loop exit.")
 			return
 		}
@@ -824,7 +824,7 @@ func (r *Producer) saveMasterInfoLoop() {
 }
 
 /*
-func (r *Producer) idPump() {
+func (p *Producer) idPump() {
 	factory := &guidFactory{}
 	lastError := time.Unix(0, 0)
 	workerID := int64(0)
@@ -841,8 +841,8 @@ func (r *Producer) idPump() {
 			continue
 		}
 		select {
-		case r.idChan <- id.Hex():
-		case <-r.exitChan:
+		case p.idChan <- id.Hex():
+		case <-p.exitChan:
 			goto exit
 		}
 	}
@@ -851,14 +851,14 @@ exit:
 	log.Infof("ID: closing")
 }
 */
-func (r *Producer) idPump() {
+func (p *Producer) idPump() {
 	var id int64
 	id = 0
 	for {
 		id++
 		select {
-		case r.idChan <- id:
-		case <-r.exitChan:
+		case p.idChan <- id:
+		case <-p.exitChan:
 			goto exit
 		}
 	}
@@ -866,18 +866,18 @@ func (r *Producer) idPump() {
 exit:
 	log.Infof("ID: closing")
 }
-func (r *Producer) sqlProcessing(id int64, quary string, schema string) error {
-	if id <= r.oldID {
+func (p *Producer) sqlProcessing(id int64, quary string, schema string) error {
+	if id <= p.oldID {
 		log.Errorf("id  error qpush failed.id:%d schema:%s  sql:(%s)", id, schema, quary)
-		r.Close()
+		p.Close()
 	}
-	_, err := r.client.Qpush(schema, quary)
+	_, err := p.client.Qpush(schema, quary)
 	if err != nil {
 		log.Errorf("qpush failed: %v", err)
-		r.Close()
+		p.Close()
 		return err
 	}
 	log.Infof("Qpush id :%d schema:%s  sql:(%s)", id, schema, quary)
-	r.oldID = id
+	p.oldID = id
 	return nil
 }
