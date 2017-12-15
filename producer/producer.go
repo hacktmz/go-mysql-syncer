@@ -237,8 +237,16 @@ func (p *Producer) OnDDL(nextPos mysql.Position, queryEvent *replication.QueryEv
 				if err != nil {
 					log.Warnf("save binlog position error  - %s", err)
 				}
-				defer p.Close()
-				return errors.New("create table but dont have schema")
+
+				log.Warnf("create table but dont have schema =%s", strQuery)
+				select {
+				case id = <-p.idChan:
+				}
+				p.sqlProcessing(id, strQuery, "common")
+				err = p.saveMasterInfo(nextPos.Name, nextPos.Pos)
+				if err != nil {
+					log.Warnf("save binlog position error - %s", err)
+				}
 			}
 			if strings.Contains(strQuery, "alter table") {
 				select {
