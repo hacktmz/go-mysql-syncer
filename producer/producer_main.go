@@ -8,8 +8,7 @@ import (
 	"runtime"
 	"syscall"
 	//_ "github.com/go-sql-driver/mysql"
-	"goproducer/producer"
-
+        "goproducer/source"
 	"github.com/juju/errors"
 	"github.com/ngaut/log"
 )
@@ -34,13 +33,13 @@ func main() {
 		syscall.SIGQUIT)
 
 	var err error
-	var config *producer.Config
-	config, err = producer.NewConfigWithFile(*configFile)
+	var config *gobinlog.Config
+	config, err = gobinlog.NewConfigWithFile(*configFile)
 	if err != nil {
 		log.Fatalf("config load failed.detail=%s", errors.ErrorStack(err))
 	}
 	for _, v := range *config.MysqlConfig {
-		r, err := producer.NewProducer(config, v)
+		r, err := gobinlog.NewProducer(config, v)
 		defer r.Close()
 
 		if err != nil {

@@ -1,4 +1,4 @@
-package producer
+package gobinlog
 
 // the core algorithm here was borrowed from:
 // Blake Mizerany's `noeqd` https://github.com/bmizerany/noeqd

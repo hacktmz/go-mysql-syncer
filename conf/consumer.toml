@@ -1,0 +1,31 @@
+
+#binlog position flush到磁盘的间隔
+binlog_flush_ms = 2000  #2s刷新一次
+
+
+[clusters]
+agents = ["10.10.106.40:20600"]
+
+[log]
+log_path = "log/Consumer.log"
+# 0 单个文件 1按天分 2按小时分
+type = 2
+highlighting = false
+level = "debug"
+
+#定义消费的mysql库的信息
+[[mysql]]
+id = "1"
+addr = "10.10.106.71:3307"
+user = "backup"
+password = "backup"
+#addr = "10.10.106.68:3307"
+#user = "backup"
+#password = "backup"
+flavor = "mysql"  
+data_path = "./conf/master1.info"
+nsname = "ns1"
+tablename = "table1"
+
+
+ 
