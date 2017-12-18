@@ -5,7 +5,7 @@
 - 多个mysql实例同时处理的功能
 - 解决跨机房mysql自带同步缓慢的问题
 - * 修改了go-mysql源码所以必须使用vendor下的包
-- consumer 多实力分库消费，数据保证不丢失
+- consumer 多实例分库消费，数据保证不丢失
 
 ## build
 - make
