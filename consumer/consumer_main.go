@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"syscall"
 	//_ "github.com/go-sql-driver/mysql"
-        "goproducer/source"
+        "go-mysql-syncer/source"
 	"github.com/juju/errors"
 	"github.com/ngaut/log"
 )
