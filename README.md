@@ -20,3 +20,7 @@
 
 ### consumer
 - 参考producer对应的配置修改 consumer.toml
+
+
+#架构图
+https://github.com/hacktmz/go-mysql-syncer/blob/master/pic.png
