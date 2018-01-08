@@ -23,4 +23,5 @@
 
 
 # 架构图
-https://github.com/hacktmz/go-mysql-syncer/blob/master/pic.png
+![](https://github.com/hacktmz/go-mysql-syncer/blob/master/pic.png)
+
